@@ -1,5 +1,6 @@
 import macros
 import rod / [ rod_types, node ]
+import nimx / [ animation ]
 import algorithm
 
 import tables
@@ -40,7 +41,6 @@ proc fixAssign(n: NimNode, field: NimNode): NimNode=
 const extPriority = ["ctor", "named", "add"]
 
 proc parseExt(ext: NimNode, property: NimNode, typ: NimNode): tuple[ext: string, res: NimNode] =
-
     let nodeProxy = newNimNode(nnkDotExpr).add(newIdentNode("np"))
     let target = newNimNode(nnkDotExpr).add(newIdentNode("np")).add(property)
     let rootNode = newNimNode(nnkDotExpr).add(newIdentNode("np")).add(newIdentNode("node"))
@@ -68,13 +68,38 @@ proc parseExt(ext: NimNode, property: NimNode, typ: NimNode): tuple[ext: string,
                 result.res = asgn
 
             of "comp", "compAdd":
-                var call : NimNode
+                var call: NimNode
                 if ext[1].kind == nnkStrLit:
                     let findCall = newCall("findNode", rootNode, ext[1])
                     call = newCall(ext[0], findCall, typ)
                 else:
                     nodeProxy.add(ext[1])
                     call = newCall(ext[0], nodeProxy, typ)
+                asgn.add(call)
+                result.res = asgn
+
+            of "anim":
+                var call: NimNode
+                if ext[1].kind == nnkPar:
+                    var node: NimNode
+                    var key: NimNode
+                    for ch in ext[1].children:
+                        if ch.kind == nnkExprColonExpr:
+                            if ch[0].kind == nnkIdent:
+                                if $ch[0].ident == "node":
+                                    node = ch[1]
+                                elif $ch[0].ident == "key":
+                                    key = ch[1]
+
+                    if not node.isNil and not key.isNil:
+                        if node.kind == nnkIdent:
+                            call = newCall("anim", nodeProxy.add(node), key)
+                        elif node.kind == nnkStrLit:
+                            let findCall = newCall("findNode", rootNode, node)
+                            call = newCall("anim", findCall, key)
+                else:
+                    call = newCall("anim", rootNode, ext[1])
+
                 asgn.add(call)
                 result.res = asgn
 
@@ -98,14 +123,12 @@ proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode]=
             result.ptype = cmd[0][1]
 
 macro nodeProxy*(head, body: untyped): untyped =
-    # echo "body ", treeRepr(body)
     result = newNimNode(nnkStmtList)
 
     var typeDesc = getAst(declProxyType(head))
     result.add typeDesc
 
     var propList = newNimNode(nnkRecList)
-    # var ctorNimNode: NimNode
 
     var nodePdesc = publicProperty("node", "Node")
     propList.add(nodePdesc)
@@ -203,6 +226,9 @@ proc compAdd*(node: Node, T: typedesc[Component]): T =
     assert(node.getComponent(T).isNil, "Component already added")
     result = node.component(T)
 
+proc anim*(node: Node, key: string): Animation =
+    result = node.animationNamed(key)
+
 when isMainModule:
     import rod.node
     import rod.viewport
@@ -215,6 +241,12 @@ when isMainModule:
     proc nodeForTest(): Node =
         result = newNode("test")
         var child1 = result.newChild("child1")
+
+        var a = newAnimation()
+        a.loopDuration = 1.0
+        a.numberOfLoops = 10
+        child1.registerAnimation("animation", a)
+
         var child2 = result.newChild("child2")
 
         var child3 = child2.newChild("somenode")
@@ -222,7 +254,7 @@ when isMainModule:
 
         var child4 = child2.newChild("sprite")
 
-        var a = newAnimation()
+        a = newAnimation()
         a.loopDuration = 1.0
         a.numberOfLoops = 10
         result.registerAnimation("in", a)
@@ -241,8 +273,20 @@ when isMainModule:
         text Text {comp: "somenode"}:
             text = "some text"
 
+        child Node {named: "child1"}
+
         text2 Text {compAdd: nilNode}
-        source int {getter}
+
+        source int
+
+        anim Animation {anim: (node: child, key: "animation")}:
+            numberOfLoops = 2
+            loopDuration = 0.5
+
+        anim2 Animation {anim: "in"}:
+            numberOfLoops = 3
+            loopDuration = 1.5
+
 
     var tproxy: TestProxy = newTestProxy(nodeForTest())
 
