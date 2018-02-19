@@ -1,2 +1,3 @@
 *.exe
 nimcache
+node_proxy/proxy
