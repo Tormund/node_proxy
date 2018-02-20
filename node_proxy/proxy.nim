@@ -1,9 +1,8 @@
-import macros
 import rod / [ rod_types, node ]
+import rod / utils / serialization_helpers
 import nimx / [ animation ]
-import algorithm
 
-import tables
+import tables, algorithm, macros, typetraits
 
 template declProxyType(typ): untyped =
     type typ* = ref object of RootObj
@@ -183,11 +182,12 @@ macro nodeProxy*(head, body: untyped): untyped =
         cmp(ia, ib)
 
     block ctorGen:
-        let procName = newNimNode(nnkPostfix).add(newIdentNode("*")).add(newIdentNode("new" & $head.ident))
+        let procName = newNimNode(nnkPostfix).add(newIdentNode("*")).add(newIdentNode("new"))
+        let ddd = newIdentDefs(newIdentNode("typ"), newNimNode(nnkBracketExpr).add(newIdentNode("typedesc")).add(head))
         var procArg = newIdentDefs(newIdentNode("inode"), newIdentNode("Node"))
         var ctorDef = newProc(
             procName,
-            [head, procArg]
+            [head, ddd, procArg]
         )
 
         let nodeProxy = newIdentNode("np")
@@ -213,9 +213,11 @@ macro nodeProxy*(head, body: untyped): untyped =
 #[
     Extensions
 ]#
-proc ctor*(nodector: Node): Node = nodector
-proc ctor*(nodector: proc(): Node): Node = nodector()
-proc named*(node: Node, name: string) : Node = node.findNode(name)
+
+proc ctor*[T](nodector: T): T =
+    result = nodector
+
+proc named*(node: Node, name: string): Node = node.findNode(name)
 proc add*(node: Node, name: string): Node = node.newChild(name)
 
 proc comp*(node: Node, T: typedesc[Component]): T =
@@ -262,7 +264,7 @@ when isMainModule:
     proc getSomeEnabled(): bool = result = true
 
     nodeProxy TestProxy:
-        myNode Node {ctor: nodeForTest}
+        myNode2 Node {ctor: nodeForTest()}
         nilNode Node {add: someNode}:
             alpha = 0.1
             enabled = getSomeEnabled()
@@ -277,7 +279,7 @@ when isMainModule:
 
         text2 Text {compAdd: nilNode}
 
-        source int
+        source int {ctor: 100500}
 
         anim Animation {anim: (node: child, key: "animation")}:
             numberOfLoops = 2
@@ -287,6 +289,5 @@ when isMainModule:
             numberOfLoops = 3
             loopDuration = 1.5
 
-
-    var tproxy: TestProxy = newTestProxy(nodeForTest())
-
+    var tproxy = new(TestProxy, nodeForTest())
+    echo "node name ", tproxy.node.name, " Text comp text ", tproxy.text.text, " intval ", tproxy.source
