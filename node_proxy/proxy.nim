@@ -1,8 +1,7 @@
-import rod / [ rod_types, node ]
-import rod / utils / serialization_helpers
-import nimx / [ animation ]
+import tables, algorithm, macros
 
-import tables, algorithm, macros, typetraits
+import proxy_extensions
+export proxy_extensions
 
 template declProxyType(typ): untyped =
     type typ* = ref object of RootObj
@@ -214,23 +213,6 @@ macro nodeProxy*(head, body: untyped): untyped =
     Extensions
 ]#
 
-proc ctor*[T](nodector: T): T =
-    result = nodector
-
-proc named*(node: Node, name: string): Node = node.findNode(name)
-proc add*(node: Node, name: string): Node = node.newChild(name)
-
-proc comp*(node: Node, T: typedesc[Component]): T =
-    result = node.getComponent(T)
-    assert(not result.isNil, "Component nil")
-
-proc compAdd*(node: Node, T: typedesc[Component]): T =
-    assert(node.getComponent(T).isNil, "Component already added")
-    result = node.component(T)
-
-proc anim*(node: Node, key: string): Animation =
-    result = node.animationNamed(key)
-
 when isMainModule:
     import rod.node
     import rod.viewport
@@ -254,7 +236,7 @@ when isMainModule:
         var child3 = child2.newChild("somenode")
         discard child3.component(Text)
 
-        var child4 = child2.newChild("sprite")
+        discard child2.newChild("sprite")
 
         a = newAnimation()
         a.loopDuration = 1.0
