@@ -15,11 +15,11 @@ template errorInvalidExtension(node): untyped =
 template warningUnknownExtension(node): untyped =
     warning node.lineinfo & " Unknown property extension: \n" & repr(node)
 
-template publicProperty(nodename, nodetype: string): untyped=
+template publicProperty(nodename, nodetype: untyped): untyped=
     newIdentDefs(newNimNode(nnkPostfix).add(newIdentNode("*")).add(newIdentNode(nodename)), newIdentNode(nodetype))
 
-# template publicProperty(nodename, nodetype: NimNode): untyped=
-#     newIdentDefs(newNimNode(nnkPostfix).add(newIdentNode("*")).add(nodename), nodetype)
+template publicProperty(nodename, nodetype: NimNode): untyped=
+    newIdentDefs(newNimNode(nnkPostfix).add(newIdentNode("*")).add(nodename), nodetype)
 
 proc fixAssign(n: NimNode, field: NimNode): NimNode=
     var asgnNode = n[0]
@@ -110,8 +110,7 @@ proc parseExt(ext: NimNode, property: NimNode, typ: NimNode): tuple[ext: string,
     else:
         errorInvalidExtension(ext)
 
-
-proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode]=
+proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode, isGlobal: bool]=
     if cmd.kind == nnkCommand:
         if cmd.len == 2 and cmd[0].kind == nnkIdent and cmd[1].kind == nnkIdent:
             result.pname = cmd[0]
@@ -119,6 +118,11 @@ proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode]=
         elif cmd[0].kind == nnkCommand:
             result.pname = cmd[0][0]
             result.ptype = cmd[0][1]
+
+    elif cmd.kind == nnkInfix:
+        result.isGlobal = true
+        result.pname = cmd[1]
+        result.ptype = cmd[2]
 
 macro nodeProxy*(head, body: untyped): untyped =
     result = newNimNode(nnkStmtList)
@@ -135,12 +139,14 @@ macro nodeProxy*(head, body: untyped): untyped =
     var modifiers = newSeq[NimNode]()
 
     for cmd in body.children:
-        if cmd.kind == nnkCommand:
-            var (propName, propTyp) = getProperty(cmd)
+        if cmd.kind in [nnkCommand, nnkInfix]:
+            var (propName, propTyp, isGlobal) = getProperty(cmd)
             if cmd.len > 1 and not propName.isNil:
-                for cmdcont in cmd.children:
+                # for cmdcont in cmd.children:
+                for i in 1 ..< cmd.len:
+                    let cmdcont = cmd[i]
                     case cmdcont.kind:
-                    of nnkCommand, nnkIdent:
+                    of nnkCommand, nnkIdent, nnkInfix, nnkProcTy:
                         # skip property decl
                         # we already have property from getProperty
                         continue
@@ -165,8 +171,12 @@ macro nodeProxy*(head, body: untyped): untyped =
             if not propName.isNil:
                 if $propName.ident == "node":
                     error propName.lineinfo & " property named `node` reserved "
-                let pdesc = newIdentDefs(propName, propTyp)
-                propList.add(pdesc)
+                if not isGlobal:
+                    let pdesc = newIdentDefs(propName, propTyp)
+                    propList.add(pdesc)
+                else:
+                    let pdesc = publicProperty(propName, propTyp)
+                    propList.add(pdesc)
         else:
             errorInvalidProxy(cmd)
 
@@ -254,7 +264,7 @@ when isMainModule:
         someNode Node {named: "somenode"}:
             parent.enabled = false
 
-        text Text {comp: "somenode"}:
+        text* Text {comp: "somenode"}:
             text = "some text"
 
         child Node {named: "child1"}
