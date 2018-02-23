@@ -115,14 +115,15 @@ proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode, isGlobal: bool]=
         if cmd.len == 2 and cmd[0].kind == nnkIdent and cmd[1].kind == nnkIdent:
             result.pname = cmd[0]
             result.ptype = cmd[1]
+
         elif cmd[0].kind == nnkCommand:
             result.pname = cmd[0][0]
             result.ptype = cmd[0][1]
 
-    elif cmd.kind == nnkInfix:
-        result.isGlobal = true
-        result.pname = cmd[1]
-        result.ptype = cmd[2]
+        elif cmd[0].kind == nnkInfix:
+            result.isGlobal = true
+            result.pname = cmd[0][1]
+            result.ptype = cmd[0][2]
 
 macro nodeProxy*(head, body: untyped): untyped =
     result = newNimNode(nnkStmtList)
@@ -228,8 +229,7 @@ when isMainModule:
     import rod.viewport
     import rod.rod_types
     import rod.component
-    import rod.component.text_component
-    import rod.component / [ sprite, solid, camera ]
+    import rod.component / [ sprite, solid, camera, text_component ]
     import nimx / [ animation, types, matrixes ]
 
     proc nodeForTest(): Node =
@@ -256,7 +256,6 @@ when isMainModule:
     proc getSomeEnabled(): bool = result = true
 
     nodeProxy TestProxy:
-        myNode2 Node {ctor: nodeForTest()}
         nilNode Node {add: someNode}:
             alpha = 0.1
             enabled = getSomeEnabled()
