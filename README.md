@@ -9,31 +9,31 @@ Node proxy for rod game engine
 Create test node tree with components and animation
 
 ```
-    proc nodeForTest(): Node =
-        result = newNode("test")
-        var child1 = result.newChild("child1")
-        var child2 = result.newChild("child2")
-        var child3 = child2.newChild("somenode")
-        discard child3.component(Text)
-        discard child2.newChild("sprite")
+proc nodeForTest(): Node =
+    result = newNode("test")
+    var child1 = result.newChild("child1")
+    var child2 = result.newChild("child2")
+    var child3 = child2.newChild("somenode")
+    discard child3.component(Text)
+    discard child2.newChild("sprite")
 
-        var a = newAnimation()
-        a.loopDuration = 1.0
-        a.numberOfLoops = 10
-        child1.registerAnimation("animation", a)
+    var a = newAnimation()
+    a.loopDuration = 1.0
+    a.numberOfLoops = 10
+    child1.registerAnimation("animation", a)
 
-        a = newAnimation()
-        a.loopDuration = 1.0
-        a.numberOfLoops = 10
-        result.registerAnimation("in", a)
+    a = newAnimation()
+    a.loopDuration = 1.0
+    a.numberOfLoops = 10
+    result.registerAnimation("in", a)
 
-    proc getSomeEnabled(): bool = result = true
+proc getSomeEnabled(): bool = result = true
 ```
 
- Define node proxy
- node proxy allways has property - ```node* : Node``` - this is root node of proxy
+# Define node proxy
 
 ```
+# node proxy allways has property - ```node* : Node``` - this is root node of proxy
 nodeProxy TestProxy:
     # crate node and add to someNode
     nilNode Node {add: someNode}:
@@ -106,6 +106,9 @@ proc new*(typ: typedesc[TestProxy]; inode: Node): TestProxy =
 
 ```
 
-# Create proxy
+# Create proxy and use
+```
 var tproxy = new(TestProxy, nodeForTest())
+
 echo "proxy ", tproxy.node.name
+```
