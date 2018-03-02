@@ -3,8 +3,8 @@ import tables, algorithm, macros
 import proxy_extensions
 export proxy_extensions
 
-template declProxyType(typ): untyped =
-    type typ* = ref object of RootObj
+template declProxyType(typ, parent): untyped =
+    type typ* = ref object of parent
 
 template errorInvalidProxy(node): untyped =
     error node.lineinfo & " Invalid proxy kind " & $node.kind & " | " & repr(node)
@@ -128,13 +128,25 @@ proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode, isGlobal: bool]=
 macro nodeProxy*(head, body: untyped): untyped =
     result = newNimNode(nnkStmtList)
 
-    var typeDesc = getAst(declProxyType(head))
-    result.add typeDesc
-
+    var T: NimNode
+    var TT: NimNode
     var propList = newNimNode(nnkRecList)
 
-    var nodePdesc = publicProperty("node", "Node")
-    propList.add(nodePdesc)
+    if head.kind == nnkIdent:
+        T = head
+        TT = ident("RootObj")
+        var nodePdesc = publicProperty("node", "Node")
+        propList.add(nodePdesc)
+    elif head.kind == nnkInfix:
+        if not head[0].eqIdent("of"):
+            raise
+        T = head[1]
+        TT = head[2]
+    else:
+        raise
+    
+    var typeDesc = getAst(declProxyType(T, TT))
+    result.add typeDesc
 
     var extensions = initOrderedTable[string, seq[NimNode]]()
     var modifiers = newSeq[NimNode]()
@@ -193,18 +205,23 @@ macro nodeProxy*(head, body: untyped): untyped =
 
     block ctorGen:
         let procName = newNimNode(nnkPostfix).add(newIdentNode("*")).add(newIdentNode("new"))
-        let ddd = newIdentDefs(newIdentNode("typ"), newNimNode(nnkBracketExpr).add(newIdentNode("typedesc")).add(head))
+        let ddd = newIdentDefs(newIdentNode("typ"), newNimNode(nnkBracketExpr).add(newIdentNode("typedesc")).add(T))
         var procArg = newIdentDefs(newIdentNode("inode"), newIdentNode("Node"))
         var ctorDef = newProc(
             procName,
-            [head, ddd, procArg]
+            [T, ddd, procArg]
         )
 
         let nodeProxy = newIdentNode("np")
 
-        var ct = quote do:
-            let `nodeProxy` = new(`head`)
-            `nodeProxy`.node = inode
+        var ct: NimNode
+        if TT.eqIdent("RootObj"):
+            ct = quote do:
+                let `nodeProxy` = new(`T`)
+                `nodeProxy`.node = inode
+        else:
+            ct = quote do:
+                let `nodeProxy` = cast[`T`](new(`TT`, inode))
 
         ctorDef.body.add(ct)
 
@@ -242,11 +259,12 @@ when isMainModule:
         child1.registerAnimation("animation", a)
 
         var child2 = result.newChild("child2")
+        discard child2.newChild("sprite")
 
         var child3 = child2.newChild("somenode")
         discard child3.component(Text)
 
-        discard child2.newChild("sprite")
+        discard result.newChild("someothernode")
 
         a = newAnimation()
         a.loopDuration = 1.0
@@ -282,3 +300,10 @@ when isMainModule:
 
     var tproxy = new(TestProxy, nodeForTest())
     echo "node name ", tproxy.node.name, " Text comp text ", tproxy.text.text, " intval ", tproxy.source
+
+    nodeProxy TestProxy2 of TestProxy:
+        someOtherNode Node {named: "someothernode"}:
+            enabled = false
+
+    var tproxy2 = new(TestProxy2, nodeForTest())
+    echo "node name ", tproxy2.node.name, " Text comp text ", tproxy2.text.text, " intval ", tproxy2.source, " newprop.enabled ", tproxy2.someOtherNode.enabled
