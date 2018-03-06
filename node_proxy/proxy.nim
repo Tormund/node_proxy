@@ -21,6 +21,7 @@ template publicProperty(nodename, nodetype: untyped): untyped=
 template publicProperty(nodename, nodetype: NimNode): untyped=
     newIdentDefs(newNimNode(nnkPostfix).add(newIdentNode("*")).add(nodename), nodetype)
 
+
 proc fixAssign(n: NimNode, field: NimNode): NimNode=
     var asgnNode = n[0]
     var prevAsgn: NimNode
@@ -31,12 +32,16 @@ proc fixAssign(n: NimNode, field: NimNode): NimNode=
     if prevAsgn.isNil:
         prevAsgn = n
 
-    var asgnExp = newNimNode(nnkDotExpr).add(newIdentNode("np")).add(field)
+    var asgnExp: NimNode 
+    if not field.isNil:
+        asgnExp = newNimNode(nnkDotExpr).add(newIdentNode("np")).add(field)
+    else:
+        asgnExp = newIdentNode("np")
     var asgnExp2 = newNimNode(nnkDotExpr).add(asgnExp).add(asgnNode)
     prevAsgn[0] = asgnExp2
     result = n
 
-const extPriority = ["ctor", "named", "add"]
+# const extPriority = ["ctor", "named", "add"]
 
 proc parseExt(ext: NimNode, property: NimNode, typ: NimNode): tuple[ext: string, res: NimNode] =
     let nodeProxy = newNimNode(nnkDotExpr).add(newIdentNode("np"))
@@ -67,12 +72,19 @@ proc parseExt(ext: NimNode, property: NimNode, typ: NimNode): tuple[ext: string,
 
             of "comp", "compAdd":
                 var call: NimNode
-                if ext[1].kind == nnkStrLit:
-                    let findCall = newCall("findNode", rootNode, ext[1])
-                    call = newCall(ext[0], findCall, typ)
-                else:
-                    nodeProxy.add(ext[1])
-                    call = newCall(ext[0], nodeProxy, typ)
+                case ext[1].kind:
+                    of nnkStrLit:
+                        let findCall = newCall("findNode", rootNode, ext[1])
+                        call = newCall(ext[0], findCall, typ)
+                    of nnkCall, nnkDotExpr:
+                        let nodeProxy = ext[1].fixAssign(nil)
+                        call = newCall(ext[0], nodeProxy, typ)
+                    of nnkIdent:
+                        nodeProxy.add(ext[1])
+                        call = newCall(ext[0], nodeProxy, typ)
+                    else:
+                        echo "Unexpected kind ", ext[1].kind
+                        raise
                 asgn.add(call)
                 result.res = asgn
 
@@ -124,6 +136,10 @@ proc getProperty(cmd: NimNode): tuple[pname, ptype: NimNode, isGlobal: bool]=
             result.isGlobal = true
             result.pname = cmd[0][1]
             result.ptype = cmd[0][2]
+    elif cmd.kind == nnkInfix:
+        result.isGlobal = true
+        result.pname = cmd[1]
+        result.ptype = cmd[2]
 
 macro nodeProxy*(head, body: untyped): untyped =
     result = newNimNode(nnkStmtList)
@@ -134,9 +150,7 @@ macro nodeProxy*(head, body: untyped): untyped =
 
     if head.kind == nnkIdent:
         T = head
-        TT = ident("RootObj")
-        var nodePdesc = publicProperty("node", "Node")
-        propList.add(nodePdesc)
+        TT = ident("NodeProxy")
     elif head.kind == nnkInfix:
         if not head[0].eqIdent("of"):
             raise
@@ -196,32 +210,26 @@ macro nodeProxy*(head, body: untyped): untyped =
     typeDesc[0][2][0][2] = propList
 
     result.add(newNimNode(nnkEmpty))
-    extensions.sort do(a,b: (string, seq[NimNode])) ->int:
-        var ia = extPriority.find(a[0])
-        var ib = extPriority.find(b[0])
-        ia = if ia < 0: 100 else: ia
-        ib = if ib < 0: 100 else: ib
-        cmp(ia, ib)
+    # extensions.sort do(a,b: (string, seq[NimNode])) ->int:
+    #     var ia = extPriority.find(a[0])
+    #     var ib = extPriority.find(b[0])
+    #     ia = if ia < 0: 100 else: ia
+    #     ib = if ib < 0: 100 else: ib
+    #     cmp(ia, ib)
 
     block ctorGen:
-        let procName = newNimNode(nnkPostfix).add(newIdentNode("*")).add(newIdentNode("new"))
-        let ddd = newIdentDefs(newIdentNode("typ"), newNimNode(nnkBracketExpr).add(newIdentNode("typedesc")).add(T))
-        var procArg = newIdentDefs(newIdentNode("inode"), newIdentNode("Node"))
-        var ctorDef = newProc(
-            procName,
-            [T, ddd, procArg]
-        )
-
         let nodeProxy = newIdentNode("np")
 
-        var ct: NimNode
-        if TT.eqIdent("RootObj"):
-            ct = quote do:
-                let `nodeProxy` = new(`T`)
-                `nodeProxy`.node = inode
-        else:
-            ct = quote do:
-                let `nodeProxy` = cast[`T`](new(`TT`, inode))
+        let procName = nnkPostfix.newTree(newIdentNode("*"), newIdentNode("init"))
+        var typeArg = newIdentDefs(nodeProxy, T)
+        var nodeArg = newIdentDefs(newIdentNode("inode"), newIdentNode("Node"))
+        var ctorDef = newProc(
+            procName,
+            [newEmptyNode(), typeArg, nodeArg]
+        )
+
+        var ct = quote do:
+            procCall `nodeProxy`.`TT`.init(inode)
 
         ctorDef.body.add(ct)
 
@@ -230,9 +238,12 @@ macro nodeProxy*(head, body: untyped): untyped =
 
         for nmod in modifiers:
             ctorDef.body.add(nmod)
+        
+        let methodDef = nnkMethodDef.newTree()
+        for x in ctorDef:
+            methodDef.add(x)
 
-        ctorDef.body.add(nodeProxy)
-        result.add(ctorDef)
+        result.add(methodDef)
 
     when defined(debugNodeProxy):
         echo "\ngen finished \n ", repr(result)
@@ -274,12 +285,12 @@ when isMainModule:
     proc getSomeEnabled(): bool = result = true
 
     nodeProxy TestProxy:
+        someNode Node {named: "somenode"}:
+            parent.enabled = false
+
         nilNode Node {add: someNode}:
             alpha = 0.1
             enabled = getSomeEnabled()
-
-        someNode Node {named: "somenode"}:
-            parent.enabled = false
 
         text* Text {comp: "somenode"}:
             text = "some text"
