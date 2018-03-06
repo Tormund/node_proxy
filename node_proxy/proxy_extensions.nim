@@ -3,6 +3,16 @@ import nimx / [ animation ]
 
 export node, animation, rod_types
 
+type NodeProxy* = ref object of RootObj
+    node*: Node
+
+method init*(np: NodeProxy, node: Node) {.base.} =
+    np.node = node
+
+proc new*(T: typedesc[NodeProxy], node: Node): T =
+    result.new()
+    result.init(node)
+
 proc ctor*[T](nodector: T): T =
     result = nodector
 
