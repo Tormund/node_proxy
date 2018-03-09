@@ -66,7 +66,12 @@ proc parseExt(ext: NimNode, property: NimNode, typ: NimNode): tuple[ext: string,
                 result.res = asgn
 
             of "add":
-                var call = newCall("add", nodeProxy.add(ext[1]), newStrLitNode($property.ident))
+                var target: NimNode
+                if ext[1].kind == nnkStrLit:
+                    target = newCall("named", rootNode, ext[1])
+                else:
+                    target = nodeProxy.add(ext[1])
+                var call = newCall("add", target, newStrLitNode($property.ident))
                 asgn.add(call)
                 result.res = asgn
 
