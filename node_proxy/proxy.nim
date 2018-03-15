@@ -32,7 +32,7 @@ proc fixAssign(n: NimNode, field: NimNode): NimNode=
     if prevAsgn.isNil:
         prevAsgn = n
 
-    var asgnExp: NimNode 
+    var asgnExp: NimNode
     if not field.isNil:
         asgnExp = newNimNode(nnkDotExpr).add(newIdentNode("np")).add(field)
     else:
@@ -163,7 +163,7 @@ macro nodeProxy*(head, body: untyped): untyped =
         TT = head[2]
     else:
         raise
-    
+
     var typeDesc = getAst(declProxyType(T, TT))
     result.add typeDesc
 
@@ -243,7 +243,7 @@ macro nodeProxy*(head, body: untyped): untyped =
 
         for nmod in modifiers:
             ctorDef.body.add(nmod)
-        
+
         let methodDef = nnkMethodDef.newTree()
         for x in ctorDef:
             methodDef.add(x)
@@ -320,6 +320,5 @@ when isMainModule:
     nodeProxy TestProxy2 of TestProxy:
         someOtherNode Node {named: "someothernode"}:
             enabled = false
-
     var tproxy2 = new(TestProxy2, nodeForTest())
     echo "node name ", tproxy2.node.name, " Text comp text ", tproxy2.text.text, " intval ", tproxy2.source, " newprop.enabled ", tproxy2.someOtherNode.enabled
